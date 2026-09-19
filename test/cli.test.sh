@@ -223,6 +223,24 @@ rm "$REPO/docs/architecture.md"
 check "reads as a tool error, not a crash" "unmapped" "$("$DOCTOR" --dir "$REPO" 2>&1)"
 git -C "$REPO" checkout -q -- docs/architecture.md
 
+echo "a mapping that matches nothing"
+cat > "$REPO/docs/system/ledger/README.md" <<'DOC'
+---
+title: ledger
+code:
+  - src/ledger/**
+  - src/ledger-archive/**
+---
+
+# ledger
+DOC
+git -C "$REPO" add -A
+commit_at "$REPO" 1 "docs(ledger): declare a path that does not exist"
+partly_dead="$("$DOCTOR" --dir "$REPO" --docs "docs/system/ledger/README.md")"
+check "warns that part of the mapping is dead" "match nothing" "$partly_dead"
+check "names the dead pattern" "src/ledger-archive/**" "$partly_dead"
+check "explain warns too" "WARNING" "$("$DOCTOR" --dir "$REPO" explain docs/system/ledger/README.md)"
+
 echo "companion docs"
 cat > "$REPO/docs/system/scraper/TODO.md" <<'DOC'
 # scraper — TODO

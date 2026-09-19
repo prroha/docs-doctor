@@ -4,26 +4,26 @@
 
 ```
 $ docs-doctor
-SYSTEM             DOC AGE  CODE AGE  DRIFT        STATUS
-carrier-scrape     34d      1d        28 commits   stale
-commissions        9d       3d        4 commits    behind
-object-storage     12d      —         unmapped     unmapped
-firelight          2d       2d        0 commits    fresh
+SYSTEM         DOC AGE  CODE AGE  DRIFT        STATUS
+billing        34d      1d        28 commits   stale
+search         9d       3d        4 commits    behind
+notifications  12d      —         unmapped     unmapped
+uploads        2d       2d        0 commits    fresh
 
 4 docs · 2 need attention · worst drift 28 commits
 
-Start with: docs-doctor explain carrier-scrape
+Start with: docs-doctor explain billing
 ```
 
 ```
-$ docs-doctor explain carrier-scrape
-carrier-scrape (docs/system/carrier-scrape/README.md)
+$ docs-doctor explain billing
+billing (docs/system/billing/README.md)
   status stale · 28 commits of drift
-  code   src/carrier-scraper/**, src/packages/carrier-book/**
+  code   src/billing/**, src/packages/invoices/**
 
 Commits the doc has not caught up with:
-  4f21ac09  2026-09-17  Ada    fix: count rows nobody could read
-  9c0e7731  2026-09-15  Lin    feat: settle findings in bulk
+  4f21ac09  2026-09-17  Ada    fix: reject an invoice with no line items
+  9c0e7731  2026-09-15  Lin    feat: retry a failed charge once
   …
 ```
 
@@ -37,7 +37,7 @@ This matters more now that AI agents read your docs before they plan. A stale do
 
 ## Install
 
-Needs **Node 22+**, git, and no dependencies.
+Needs **Node 22+**, git, and no dependencies. Runs on **macOS, Linux and Windows**.
 
 ```bash
 npm install -g github:prroha/docs-doctor
@@ -52,20 +52,22 @@ Each doc declares its own code paths in front matter, so the mapping travels wit
 
 ```markdown
 ---
-title: Carrier scrape
+title: Billing
 code:
-  - src/carrier-scraper/**
-  - src/packages/carrier-book/**
+  - src/billing/**
+  - src/packages/invoices/**
 ignore:
-  - src/carrier-scraper/**/__tests__/**
+  - src/billing/**/__tests__/**
 ---
 
-# Carrier scrape
+# Billing
 ```
 
 Paths are git pathspecs, so `**` works as you'd expect and `ignore` entries are excluded.
 
 **What counts as a system's doc:** every doc matched by the patterns, except the companions that belong to a README beside them (`TODO.md`, `FEEDBACK.md`, `CHANGELOG.md`). Pass `--all` to include those too.
+
+**A mapping that matches nothing** is reported: a doc whose `code:` lists a path that no longer exists would otherwise read as current while covering code nobody checks.
 
 **A project README** usually describes the project rather than one system, so either map it (`code: [src/**]`), or scope the run: `--docs "docs/**/*.md"`.
 
@@ -176,7 +178,7 @@ The end-to-end tests build real repositories where the history is known in advan
 - **Drift is a signal, not proof.** A formatting change counts as a commit; a subtle behaviour change might not need a doc edit. Use it to decide where to look.
 - **Renames** are counted as commits touching the path, which is usually what you want, but a big directory move will light everything up once.
 - **Shallow clones** have no history to count. Use `fetch-depth: 0` in CI.
-- **Monorepos with many docs** run two or three `git` calls per doc; on hundreds of docs that takes a few seconds. Code paths are passed to git as pathspecs, never as expanded file lists, so a mapping like `src/**` is fine.
+- **Monorepos are fine.** git calls run in parallel and drift is counted with `rev-list --count`, so a 95-doc repository reports in about 6 seconds. Code paths reach git as pathspecs, never as expanded file lists, so a mapping like `src/**` costs nothing extra.
 - **Drift uses committer dates**, matching what `git log --since` filters on, so a rebase moves a doc's baseline with it.
 
 ## License

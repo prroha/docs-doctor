@@ -39,12 +39,12 @@ Options:
 A doc declares the code it documents in its front matter:
 
   ---
-  title: Carrier scrape
+  title: Billing
   code:
-    - src/carrier-scraper/**
-    - src/packages/carrier-book/**
+    - src/billing/**
+    - src/packages/invoices/**
   ignore:
-    - src/carrier-scraper/**/__tests__/**
+    - src/billing/**/__tests__/**
   ---
 
 Statuses: fresh (code has not moved since the doc did) · behind (a few commits)
@@ -202,8 +202,8 @@ function scaffold(options) {
   console.log(`\nEdit the 'code:' paths in README.md so docs-doctor can track drift.`);
 }
 
-function report(options, root) {
-  const { systems, summary } = scan({
+async function report(options, root) {
+  const { systems, summary } = await scan({
     root,
     docPatterns: options.docPatterns,
     thresholds: options.thresholds,
@@ -230,7 +230,6 @@ function report(options, root) {
   }
 }
 
-// What to do next, which on a first run is "tell docs-doctor what your docs cover".
 function nextStep(systems, summary) {
   const mapped = systems.filter((system) => !system.inferredMapping && system.codePaths.length > 0);
   if (mapped.length === 0 && summary.total > 0) {
@@ -249,6 +248,14 @@ function nextStep(systems, summary) {
   if (stale) {
     return `Start with: docs-doctor explain ${stale.doc}`;
   }
+  // A partly dead mapping is the dangerous case: the doc still matches
+  // something, so it reads as current while covering code nobody checks.
+  const partlyDead = systems.find(
+    (system) => system.matchedFileCount > 0 && system.deadPatterns?.length > 0,
+  );
+  if (partlyDead) {
+    return `${partlyDead.doc} declares paths that match nothing (${partlyDead.deadPatterns.join(", ")}). Fix the mapping, or its drift is understated.`;
+  }
   const unmapped = systems.find((system) => system.status === "unmapped");
   if (unmapped) {
     return `Unmapped: add 'code:' front matter to ${unmapped.doc}, or scope the run with --docs.`;
@@ -256,11 +263,11 @@ function nextStep(systems, summary) {
   return "Every doc is current.";
 }
 
-function explainOne(options, root) {
+async function explainOne(options, root) {
   if (!options.target) {
     fail("say which doc to explain: docs-doctor explain <name|path>");
   }
-  const { systems } = scan({
+  const { systems } = await scan({
     root,
     docPatterns: options.docPatterns,
     thresholds: options.thresholds,
@@ -273,7 +280,7 @@ function explainOne(options, root) {
     fail(`no doc called ${options.target}. Run docs-doctor to list them.`);
   }
 
-  const { commits } = explain({ root, docPath: match.doc, thresholds: options.thresholds });
+  const { commits } = await explain({ root, docPath: match.doc, thresholds: options.thresholds });
   if (options.json) {
     console.log(JSON.stringify({ system: match, commits }, null, 2));
     return;
@@ -284,6 +291,9 @@ function explainOne(options, root) {
   console.log(`  code   ${match.codePaths.join(", ") || "none declared"}${match.inferredMapping ? " (guessed)" : ""}`);
   if (match.ignorePaths.length > 0) {
     console.log(`  ignore ${match.ignorePaths.join(", ")}`);
+  }
+  if (match.deadPatterns.length > 0) {
+    console.log(`  WARNING: these declared paths match no tracked file: ${match.deadPatterns.join(", ")}`);
   }
   if (commits.length === 0) {
     console.log("\nNothing has touched its code since the doc last changed.");
@@ -296,7 +306,7 @@ function explainOne(options, root) {
   }
 }
 
-function main() {
+async function main() {
   let options;
   try {
     options = parseArguments(process.argv.slice(2));
@@ -320,7 +330,7 @@ function main() {
 
   let root;
   try {
-    root = repositoryRoot(options.dir);
+    root = await repositoryRoot(options.dir);
   } catch (error) {
     if (error instanceof GitError) {
       fail(`${options.dir} is not inside a git repository.`, EXIT.notARepository);
@@ -330,16 +340,16 @@ function main() {
 
   try {
     if (options.command === "explain") {
-      explainOne(options, root);
+      await explainOne(options, root);
       return;
     }
     if (options.command !== "check") {
       fail(`unknown command: ${options.command}. Run docs-doctor --help.`);
     }
-    report(options, root);
+    await report(options, root);
   } catch (error) {
     fail(error instanceof GitError ? error.message : `${error.message}`);
   }
 }
 
-main();
+await main();

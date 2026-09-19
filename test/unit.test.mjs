@@ -21,17 +21,17 @@ const DAY = 86400000;
 
 test("reads a block list of code paths", () => {
   const { data, body } = parseFrontMatter(`---
-title: Carrier scrape
+title: Billing
 code:
-  - src/carrier-scraper/**
-  - src/packages/carrier-book/**
+  - src/billing/**
+  - src/packages/invoices/**
 ---
 
-# Carrier scrape
+# Billing
 `);
-  assert.equal(data.title, "Carrier scrape");
-  assert.deepEqual(data.code, ["src/carrier-scraper/**", "src/packages/carrier-book/**"]);
-  assert.match(body, /^# Carrier scrape/);
+  assert.equal(data.title, "Billing");
+  assert.deepEqual(data.code, ["src/billing/**", "src/packages/invoices/**"]);
+  assert.match(body, /^# Billing/);
 });
 
 test("reads an inline list, with or without brackets and quotes", () => {
@@ -68,17 +68,17 @@ test("an unterminated fence is not treated as front matter", () => {
 });
 
 test("names a system from the title, the directory, then the file", () => {
-  assert.equal(systemName("docs/system/scrape/README.md", { title: "Carrier scrape" }), "Carrier scrape");
-  assert.equal(systemName("docs/system/scrape/README.md", {}), "scrape");
+  assert.equal(systemName("docs/system/search/README.md", { title: "Billing" }), "Billing");
+  assert.equal(systemName("docs/system/search/README.md", {}), "search");
   assert.equal(systemName("docs/architecture.md", {}), "architecture");
 });
 
 test("declared paths win; otherwise the directory name is a guess", () => {
-  const declared = inferCodePaths("docs/system/scrape/README.md", { code: ["src/scraper/**"] });
-  assert.deepEqual(declared, { paths: ["src/scraper/**"], inferred: false });
+  const declared = inferCodePaths("docs/system/search/README.md", { code: ["src/search/**"] });
+  assert.deepEqual(declared, { paths: ["src/search/**"], inferred: false });
 
-  const guessed = inferCodePaths("docs/system/scrape/README.md", {});
-  assert.deepEqual(guessed, { paths: ["**/scrape/**"], inferred: true });
+  const guessed = inferCodePaths("docs/system/search/README.md", {});
+  assert.deepEqual(guessed, { paths: ["**/search/**"], inferred: true });
 
   assert.deepEqual(inferCodePaths("README.md", {}), { paths: [], inferred: false });
 });
@@ -187,7 +187,7 @@ test("rows show ages in days and an em dash when unknown", () => {
   const [row] = toRows(
     [
       {
-        name: "scrape",
+        name: "search",
         status: STATUS.stale,
         driftCommits: 5,
         docCommittedAtMs: now - 10 * DAY,
@@ -197,7 +197,7 @@ test("rows show ages in days and an em dash when unknown", () => {
     now,
   );
   assert.deepEqual(row, {
-    system: "scrape",
+    system: "search",
     docAge: "10d",
     codeAge: "—",
     drift: "5 commits",
