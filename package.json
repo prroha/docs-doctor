@@ -9,6 +9,7 @@
   "files": [
     "bin",
     "lib",
+    "agents",
     "README.md",
     "LICENSE"
   ],
@@ -20,7 +21,16 @@
   "engines": {
     "node": ">=22"
   },
-  "keywords": ["documentation", "docs", "drift", "stale-docs", "git", "cli", "ci", "ai-agent"],
+  "keywords": [
+    "documentation",
+    "docs",
+    "drift",
+    "stale-docs",
+    "git",
+    "cli",
+    "ci",
+    "ai-agent"
+  ],
   "license": "MIT",
   "author": "Prakash Subedi",
   "repository": {

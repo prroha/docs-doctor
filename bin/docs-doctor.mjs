@@ -51,8 +51,8 @@ Statuses: fresh (code has not moved since the doc did) · behind (a few commits)
           stale (past a threshold) · unmapped (no code declared or matched)
           orphan (the code it names is gone) · untracked (doc not committed yet)`;
 
-function parseArguments(argv) {
-  const options = {
+function defaultOptions() {
+  return {
     command: "check",
     target: null,
     stale: false,
@@ -65,65 +65,56 @@ function parseArguments(argv) {
     help: false,
     version: false,
   };
+}
 
+const FLAGS = {
+  "--stale": (options) => (options.stale = true),
+  "--ci": (options) => (options.ci = true),
+  "--json": (options) => (options.json = true),
+  "--all": (options) => (options.includeCompanions = true),
+  "-h": (options) => (options.help = true),
+  "--help": (options) => (options.help = true),
+  "-v": (options) => (options.version = true),
+  "--version": (options) => (options.version = true),
+};
+
+const VALUE_FLAGS = {
+  "--docs": (options, value) => options.docPatterns.push(value),
+  "--dir": (options, value) => (options.dir = value),
+  "--stale-commits": (options, value) => (options.thresholds.staleCommits = positiveNumber("--stale-commits", value)),
+  "--stale-days": (options, value) => (options.thresholds.staleDays = positiveNumber("--stale-days", value)),
+};
+
+function positiveNumber(flag, raw) {
+  const number = Number(raw);
+  if (!Number.isFinite(number) || number < 0) {
+    throw new Error(`${flag} expects a number, got ${raw}`);
+  }
+  return number;
+}
+
+function parseArguments(argv) {
+  const options = defaultOptions();
   const positional = [];
+
   for (let index = 0; index < argv.length; index++) {
     const argument = argv[index];
-    const value = () => {
-      const next = argv[++index];
-      if (next == null || next.startsWith("--")) {
+    if (FLAGS[argument]) {
+      FLAGS[argument](options);
+      continue;
+    }
+    if (VALUE_FLAGS[argument]) {
+      const value = argv[++index];
+      if (value == null || value.startsWith("--")) {
         throw new Error(`${argument} needs a value`);
       }
-      return next;
-    };
-    const positiveNumber = () => {
-      const raw = value();
-      const number = Number(raw);
-      if (!Number.isFinite(number) || number < 0) {
-        throw new Error(`${argument} expects a number, got ${raw}`);
-      }
-      return number;
-    };
-
-    switch (argument) {
-      case "--stale":
-        options.stale = true;
-        break;
-      case "--ci":
-        options.ci = true;
-        break;
-      case "--json":
-        options.json = true;
-        break;
-      case "--all":
-        options.includeCompanions = true;
-        break;
-      case "--docs":
-        options.docPatterns.push(value());
-        break;
-      case "--stale-commits":
-        options.thresholds.staleCommits = positiveNumber();
-        break;
-      case "--stale-days":
-        options.thresholds.staleDays = positiveNumber();
-        break;
-      case "--dir":
-        options.dir = value();
-        break;
-      case "-h":
-      case "--help":
-        options.help = true;
-        break;
-      case "-v":
-      case "--version":
-        options.version = true;
-        break;
-      default:
-        if (argument.startsWith("-")) {
-          throw new Error(`unknown option: ${argument}`);
-        }
-        positional.push(argument);
+      VALUE_FLAGS[argument](options, value);
+      continue;
     }
+    if (argument.startsWith("-")) {
+      throw new Error(`unknown option: ${argument}`);
+    }
+    positional.push(argument);
   }
 
   if (positional.length > 0) {
@@ -229,17 +220,40 @@ function report(options, root) {
     console.log(renderTable(toRows(ordered, Date.now())));
     const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
     console.log(
-      `\n${plural(summary.total, "doc")} · ${summary.needsAttention} need attention · worst drift ${plural(summary.worstDrift, "commit")}`,
+      `\n${plural(summary.total, "doc")} · ${summary.needsAttention} ${summary.needsAttention === 1 ? "needs" : "need"} attention · worst drift ${plural(summary.worstDrift, "commit")}`,
     );
-    const stale = ordered.filter((system) => system.status === "stale");
-    if (stale.length > 0) {
-      console.log(`\nStart with: docs-doctor explain ${stale[0].doc}`);
-    }
+    console.log(`\n${nextStep(ordered, summary)}`);
   }
 
   if (options.ci && summary.needsAttention > 0) {
     process.exit(EXIT.stale);
   }
+}
+
+// What to do next, which on a first run is "tell docs-doctor what your docs cover".
+function nextStep(systems, summary) {
+  const mapped = systems.filter((system) => !system.inferredMapping && system.codePaths.length > 0);
+  if (mapped.length === 0 && summary.total > 0) {
+    return [
+      "No doc says which code it covers yet, so nothing can be checked for drift.",
+      "Add front matter to a doc and run it again:",
+      "",
+      "  ---",
+      "  title: billing",
+      "  code:",
+      "    - src/billing/**",
+      "  ---",
+    ].join("\n");
+  }
+  const stale = systems.find((system) => system.status === "stale");
+  if (stale) {
+    return `Start with: docs-doctor explain ${stale.doc}`;
+  }
+  const unmapped = systems.find((system) => system.status === "unmapped");
+  if (unmapped) {
+    return `Unmapped: add 'code:' front matter to ${unmapped.doc}, or scope the run with --docs.`;
+  }
+  return "Every doc is current.";
 }
 
 function explainOne(options, root) {

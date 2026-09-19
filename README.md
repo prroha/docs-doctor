@@ -122,7 +122,9 @@ docs-doctor --ci --docs "docs/system/billing/**/*.md"
 
 ## With an AI coding agent
 
-Agents plan from your docs, so the stale ones do real damage. Two useful habits:
+Agents plan from your docs, so the stale ones do real damage. Drop-in instructions live in [`agents/`](agents/): paste [`agents/INSTRUCTIONS.md`](agents/INSTRUCTIONS.md) into your `CLAUDE.md`, `AGENTS.md` or `.cursorrules`, or copy [`agents/claude-skill/SKILL.md`](agents/claude-skill/SKILL.md) to `.claude/skills/doc-drift/SKILL.md`.
+
+Two habits worth teaching an agent:
 
 ```bash
 docs-doctor --stale --json     # before planning: which docs not to trust
