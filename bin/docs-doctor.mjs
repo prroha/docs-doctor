@@ -27,9 +27,9 @@ Options:
   --stale                only docs needing attention
   --ci                   exit 2 if any doc needs attention
   --json                 machine-readable output
-  --all                  include companion docs (TODO, FEEDBACK) as systems
-  --docs <glob>          where the docs are (repeatable)
-                         default: ${DEFAULT_DOC_PATTERNS.join(", ")}
+  --all                  include companion docs (TODO, FEEDBACK, CHANGELOG)
+  --docs <glob>          where the docs are (repeatable, git pathspecs)
+                         default: docs/**/*.md, doc/**/*.md, *.md (root)
   --stale-commits <n>    commits of drift that mean stale (default ${DEFAULT_THRESHOLDS.staleCommits})
   --stale-days <n>       days of drift that mean stale (default ${DEFAULT_THRESHOLDS.staleDays})
   --dir <path>           run against another repository
@@ -227,12 +227,13 @@ function report(options, root) {
     console.log(options.stale ? "Every doc is current." : "No docs found.");
   } else {
     console.log(renderTable(toRows(ordered, Date.now())));
+    const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
     console.log(
-      `\n${summary.total} docs · ${summary.needsAttention} need attention · worst drift ${summary.worstDrift} commits`,
+      `\n${plural(summary.total, "doc")} · ${summary.needsAttention} need attention · worst drift ${plural(summary.worstDrift, "commit")}`,
     );
     const stale = ordered.filter((system) => system.status === "stale");
     if (stale.length > 0) {
-      console.log(`\nStart with: docs-doctor explain ${stale[0].name}`);
+      console.log(`\nStart with: docs-doctor explain ${stale[0].doc}`);
     }
   }
 
@@ -266,7 +267,10 @@ function explainOne(options, root) {
 
   console.log(`${match.name} (${match.doc})`);
   console.log(`  status ${match.status} · ${match.driftCommits} commits of drift`);
-  console.log(`  code   ${match.codePaths.join(", ") || "none declared"}`);
+  console.log(`  code   ${match.codePaths.join(", ") || "none declared"}${match.inferredMapping ? " (guessed)" : ""}`);
+  if (match.ignorePaths.length > 0) {
+    console.log(`  ignore ${match.ignorePaths.join(", ")}`);
+  }
   if (commits.length === 0) {
     console.log("\nNothing has touched its code since the doc last changed.");
     return;
@@ -320,10 +324,7 @@ function main() {
     }
     report(options, root);
   } catch (error) {
-    if (error instanceof GitError) {
-      fail(error.message);
-    }
-    throw error;
+    fail(error instanceof GitError ? error.message : `${error.message}`);
   }
 }
 

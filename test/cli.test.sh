@@ -121,7 +121,7 @@ DOC
 }
 
 echo "building a repository with known history"
-REPO="$(build_repo)"
+REPO="$(build_repo)" || exit 1
 
 echo "check"
 report="$("$DOCTOR" --dir "$REPO")"
@@ -174,6 +174,54 @@ check "scaffolds the three files" "docs/system/payments/README.md" "$scaffold"
 check "tells you to set the code paths" "code" "$scaffold"
 check "the scaffold carries front matter" "code:" "$(cat "$REPO/docs/system/payments/README.md")"
 check "running it again is harmless" "already has its docs" "$("$DOCTOR" --dir "$REPO" new payments)"
+
+echo "docs that are not READMEs"
+cat > "$REPO/docs/architecture.md" <<'DOC'
+# Architecture
+
+No front matter, so nothing ties this to code.
+DOC
+cat > "$REPO/docs/pipeline.md" <<'DOC'
+---
+title: pipeline
+code:
+  - src/ledger/**
+---
+
+# Pipeline
+DOC
+git -C "$REPO" add -A
+commit_at "$REPO" 1 "docs: add architecture and pipeline"
+plain="$("$DOCTOR" --dir "$REPO")"
+check "an unmapped doc that is not a README is still reported" "architecture" "$plain"
+check "and counts as needing attention" "unmapped" "$plain"
+check "a non-README that declares code is reported" "pipeline" "$plain"
+"$DOCTOR" --dir "$REPO" --ci --docs "docs/architecture.md" >/dev/null 2>&1
+check_code "--ci fails on an unmapped doc alone" 2 "$?"
+
+echo "a guessed mapping does not count its own docs as code"
+mkdir -p "$REPO/docs/system/widgets"
+cat > "$REPO/docs/system/widgets/README.md" <<'DOC'
+# widgets
+
+No code declared, and no src/widgets directory exists.
+DOC
+cat > "$REPO/docs/system/widgets/TODO.md" <<'DOC'
+# widgets — TODO
+DOC
+git -C "$REPO" add -A
+commit_at "$REPO" 1 "docs: add widgets"
+widgets="$("$DOCTOR" --dir "$REPO" --json | python3 -c "
+import json, sys
+rows = [s for s in json.load(sys.stdin)['systems'] if s['name'] == 'widgets']
+print(rows[0]['status'] if rows else 'missing')
+")"
+check "a README whose only match is its own TODO is unmapped, not fresh" "unmapped" "$widgets"
+
+echo "a doc missing from the working tree"
+rm "$REPO/docs/architecture.md"
+check "reads as a tool error, not a crash" "unmapped" "$("$DOCTOR" --dir "$REPO" 2>&1)"
+git -C "$REPO" checkout -q -- docs/architecture.md
 
 echo "companion docs"
 cat > "$REPO/docs/system/scraper/TODO.md" <<'DOC'

@@ -65,7 +65,9 @@ ignore:
 
 Paths are git pathspecs, so `**` works as you'd expect and `ignore` entries are excluded.
 
-**What counts as a system's doc:** any `README.md`, plus any doc that declares `code:` front matter. Companions like `TODO.md` and `FEEDBACK.md` belong to their README rather than to code, so they are not listed unless you pass `--all`.
+**What counts as a system's doc:** every doc matched by the patterns, except the companions that belong to a README beside them (`TODO.md`, `FEEDBACK.md`, `CHANGELOG.md`). Pass `--all` to include those too.
+
+**A project README** usually describes the project rather than one system, so either map it (`code: [src/**]`), or scope the run: `--docs "docs/**/*.md"`.
 
 **No front matter?** docs-doctor guesses from the directory (`docs/system/scraper/README.md` → paths containing `scraper`) and marks the result `unmapped` if the guess matches nothing, so unmapped docs are visible rather than silently "fine".
 
@@ -95,7 +97,7 @@ docs-doctor new <name>           # scaffold README, TODO and FEEDBACK
 
 | Option | Meaning |
 |---|---|
-| `--docs <glob>` | Where the docs are; repeatable. Default: `docs/**/*.md`, `doc/**/*.md`, `*.md` |
+| `--docs <glob>` | Where the docs are; repeatable git pathspecs. Default: `docs/**/*.md`, `doc/**/*.md` and root-level `*.md` |
 | `--all` | Include companion docs (`TODO.md`, `FEEDBACK.md`) as systems of their own |
 | `--stale-commits <n>` | Commits of drift that mean stale (default 10) |
 | `--stale-days <n>` | Days of drift that mean stale (default 30) |
@@ -172,7 +174,8 @@ The end-to-end tests build real repositories where the history is known in advan
 - **Drift is a signal, not proof.** A formatting change counts as a commit; a subtle behaviour change might not need a doc edit. Use it to decide where to look.
 - **Renames** are counted as commits touching the path, which is usually what you want, but a big directory move will light everything up once.
 - **Shallow clones** have no history to count. Use `fetch-depth: 0` in CI.
-- **Monorepos with many docs** run one `git log` per doc; on hundreds of docs that takes a few seconds.
+- **Monorepos with many docs** run two or three `git` calls per doc; on hundreds of docs that takes a few seconds. Code paths are passed to git as pathspecs, never as expanded file lists, so a mapping like `src/**` is fine.
+- **Drift uses committer dates**, matching what `git log --since` filters on, so a rebase moves a doc's baseline with it.
 
 ## License
 
