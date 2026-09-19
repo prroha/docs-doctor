@@ -7,7 +7,7 @@
 // Full docs: README.md
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix as posixPath } from "node:path";
 import { DEFAULT_THRESHOLDS, needsAttention, renderTable, toRows } from "../lib/drift.mjs";
 import { GitError, repositoryRoot } from "../lib/git.mjs";
 import { DEFAULT_DOC_PATTERNS, explain, scan } from "../lib/scan.mjs";
@@ -192,7 +192,7 @@ function scaffold(options) {
       continue;
     }
     writeFileSync(path, template(options.target));
-    written.push(join("docs", "system", options.target, file));
+    written.push(posixPath.join("docs", "system", options.target, file));
   }
   if (written.length === 0) {
     console.log(`docs/system/${options.target} already has its docs.`);
