@@ -27,6 +27,7 @@ Options:
   --stale                only docs needing attention
   --ci                   exit 2 if any doc needs attention
   --json                 machine-readable output
+  --all                  include companion docs (TODO, FEEDBACK) as systems
   --docs <glob>          where the docs are (repeatable)
                          default: ${DEFAULT_DOC_PATTERNS.join(", ")}
   --stale-commits <n>    commits of drift that mean stale (default ${DEFAULT_THRESHOLDS.staleCommits})
@@ -57,6 +58,7 @@ function parseArguments(argv) {
     stale: false,
     ci: false,
     json: false,
+    includeCompanions: false,
     docPatterns: [],
     thresholds: { ...DEFAULT_THRESHOLDS },
     dir: process.cwd(),
@@ -92,6 +94,9 @@ function parseArguments(argv) {
         break;
       case "--json":
         options.json = true;
+        break;
+      case "--all":
+        options.includeCompanions = true;
         break;
       case "--docs":
         options.docPatterns.push(value());
@@ -211,6 +216,7 @@ function report(options, root) {
     root,
     docPatterns: options.docPatterns,
     thresholds: options.thresholds,
+    includeCompanions: options.includeCompanions,
   });
   const shown = options.stale ? systems.filter((system) => needsAttention(system.status)) : systems;
   const ordered = [...shown].sort((a, b) => (b.driftCommits ?? 0) - (a.driftCommits ?? 0));
@@ -243,6 +249,7 @@ function explainOne(options, root) {
     root,
     docPatterns: options.docPatterns,
     thresholds: options.thresholds,
+    includeCompanions: options.includeCompanions,
   });
   const match = systems.find(
     (system) => system.name === options.target || system.doc === options.target,

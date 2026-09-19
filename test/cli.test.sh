@@ -175,6 +175,15 @@ check "tells you to set the code paths" "code" "$scaffold"
 check "the scaffold carries front matter" "code:" "$(cat "$REPO/docs/system/payments/README.md")"
 check "running it again is harmless" "already has its docs" "$("$DOCTOR" --dir "$REPO" new payments)"
 
+echo "companion docs"
+cat > "$REPO/docs/system/scraper/TODO.md" <<'DOC'
+# scraper — TODO
+DOC
+git -C "$REPO" add -A
+commit_at "$REPO" 1 "docs(scraper): add a TODO"
+check_missing "a TODO beside a README is not its own system" "TODO" "$("$DOCTOR" --dir "$REPO")"
+check "--all shows companions" "TODO" "$("$DOCTOR" --dir "$REPO" --all)"
+
 echo "errors"
 check "a directory outside git is reported" "not inside a git repository" \
   "$("$DOCTOR" --dir "$WORK" 2>&1)"

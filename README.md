@@ -65,6 +65,8 @@ ignore:
 
 Paths are git pathspecs, so `**` works as you'd expect and `ignore` entries are excluded.
 
+**What counts as a system's doc:** any `README.md`, plus any doc that declares `code:` front matter. Companions like `TODO.md` and `FEEDBACK.md` belong to their README rather than to code, so they are not listed unless you pass `--all`.
+
 **No front matter?** docs-doctor guesses from the directory (`docs/system/scraper/README.md` → paths containing `scraper`) and marks the result `unmapped` if the guess matches nothing, so unmapped docs are visible rather than silently "fine".
 
 ## Statuses
@@ -94,6 +96,7 @@ docs-doctor new <name>           # scaffold README, TODO and FEEDBACK
 | Option | Meaning |
 |---|---|
 | `--docs <glob>` | Where the docs are; repeatable. Default: `docs/**/*.md`, `doc/**/*.md`, `*.md` |
+| `--all` | Include companion docs (`TODO.md`, `FEEDBACK.md`) as systems of their own |
 | `--stale-commits <n>` | Commits of drift that mean stale (default 10) |
 | `--stale-days <n>` | Days of drift that mean stale (default 30) |
 | `--dir <path>` | Run against another repository |
