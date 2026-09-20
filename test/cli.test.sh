@@ -141,6 +141,7 @@ echo "--json"
 json="$("$DOCTOR" --dir "$REPO" --json)"
 check "reports a summary object" '"summary"' "$json"
 check "reports each system" '"driftCommits"' "$json"
+check "names the matched-code flag for what it is" '"hasMatchedCode"' "$json"
 if command -v python3 >/dev/null 2>&1; then
   parsed="$(printf "%s" "$json" | python3 -c "
 import json, sys
@@ -154,6 +155,24 @@ fi
 echo "thresholds"
 check "a raised threshold makes it merely behind" "behind" \
   "$("$DOCTOR" --dir "$REPO" --stale-commits 50)"
+check "a zero threshold is refused rather than marking everything stale" "greater than 0" \
+  "$("$DOCTOR" --dir "$REPO" --stale-commits 0 2>&1)"
+"$DOCTOR" --dir "$REPO" --stale-commits 0 >/dev/null 2>&1
+check_code "and exits as bad usage" 1 "$?"
+
+echo "a doc that is only behind"
+behind_only="$("$DOCTOR" --dir "$REPO" --stale-commits 50 --docs "docs/system/scraper/*.md")"
+check "says nothing needs attention" "Nothing needs attention" "$behind_only"
+check_missing "does not call a behind doc current" "Every doc is current." "$behind_only"
+
+echo "a doc whose code is gone, on its own"
+orphan_only="$("$DOCTOR" --dir "$REPO" --docs "docs/system/ghost/*.md")"
+check "names the orphan as the next step" "Orphan" "$orphan_only"
+check_missing "does not call an orphan current" "Every doc is current." "$orphan_only"
+
+echo "--docs patterns are glob pathspecs, like the defaults"
+check "a root-level *.md does not reach nested docs" "No docs found." \
+  "$("$DOCTOR" --dir "$REPO" --docs "*.md")"
 
 echo "--ci"
 "$DOCTOR" --dir "$REPO" --ci >/dev/null 2>&1
@@ -245,10 +264,38 @@ echo "companion docs"
 cat > "$REPO/docs/system/scraper/TODO.md" <<'DOC'
 # scraper — TODO
 DOC
+cat > "$REPO/docs/system/scraper/CHANGELOG.md" <<'DOC'
+# scraper — changelog
+DOC
 git -C "$REPO" add -A
-commit_at "$REPO" 1 "docs(scraper): add a TODO"
-check_missing "a TODO beside a README is not its own system" "TODO" "$("$DOCTOR" --dir "$REPO")"
-check "--all shows companions" "TODO" "$("$DOCTOR" --dir "$REPO" --all)"
+commit_at "$REPO" 1 "docs(scraper): add a TODO and a CHANGELOG"
+companions="$("$DOCTOR" --dir "$REPO")"
+check_missing "a TODO beside a README is not its own system" "TODO" "$companions"
+check_missing "nor is a CHANGELOG" "CHANGELOG" "$companions"
+with_all="$("$DOCTOR" --dir "$REPO" --all)"
+check "--all shows companions" "TODO" "$with_all"
+check "--all shows a CHANGELOG too" "CHANGELOG" "$with_all"
+
+echo "a repository path containing a URL character"
+HASH_REPO="$WORK/needs#escaping/repo"
+mkdir -p "$HASH_REPO/src/alpha" "$HASH_REPO/docs/system/alpha"
+git -C "$HASH_REPO" init -q -b main
+git -C "$HASH_REPO" config user.email test@example.com
+git -C "$HASH_REPO" config user.name "Test"
+cat > "$HASH_REPO/docs/system/alpha/README.md" <<'DOC'
+---
+title: alpha-from-front-matter
+code:
+  - src/alpha/**
+---
+
+# alpha
+DOC
+echo "one" > "$HASH_REPO/src/alpha/index.js"
+git -C "$HASH_REPO" add -A
+commit_at "$HASH_REPO" 2 "initial commit"
+check "reads a doc whose path contains a #" "alpha-from-front-matter" \
+  "$("$DOCTOR" --dir "$HASH_REPO" 2>&1)"
 
 echo "errors"
 check "a directory outside git is reported" "not inside a git repository" \

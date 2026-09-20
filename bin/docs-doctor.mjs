@@ -8,7 +8,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, posix as posixPath } from "node:path";
-import { DEFAULT_THRESHOLDS, needsAttention, renderTable, toRows } from "../lib/drift.mjs";
+import { DEFAULT_THRESHOLDS, STATUS, needsAttention, renderTable, toRows } from "../lib/drift.mjs";
 import { GitError, repositoryRoot } from "../lib/git.mjs";
 import { DEFAULT_DOC_PATTERNS, explain, scan } from "../lib/scan.mjs";
 
@@ -29,6 +29,7 @@ Options:
   --json                 machine-readable output
   --all                  include companion docs (TODO, FEEDBACK, CHANGELOG)
   --docs <glob>          where the docs are (repeatable, git pathspecs)
+                         ** spans directories, a single * does not cross a /
                          default: docs/**/*.md, doc/**/*.md, *.md (root)
   --stale-commits <n>    commits of drift that mean stale (default ${DEFAULT_THRESHOLDS.staleCommits})
   --stale-days <n>       days of drift that mean stale (default ${DEFAULT_THRESHOLDS.staleDays})
@@ -85,10 +86,13 @@ const VALUE_FLAGS = {
   "--stale-days": (options, value) => (options.thresholds.staleDays = positiveNumber("--stale-days", value)),
 };
 
+// Zero is refused rather than accepted: a threshold of 0 commits marks every
+// mapped doc stale, and a threshold of 0 days says no more than --stale-commits 1
+// already says. Neither is a threshold anyone means to set.
 function positiveNumber(flag, raw) {
   const number = Number(raw);
-  if (!Number.isFinite(number) || number < 0) {
-    throw new Error(`${flag} expects a number, got ${raw}`);
+  if (!Number.isFinite(number) || number <= 0) {
+    throw new Error(`${flag} expects a number greater than 0, got ${raw}`);
   }
   return number;
 }
@@ -215,10 +219,9 @@ async function report(options, root) {
   if (options.json) {
     console.log(JSON.stringify({ summary, systems: ordered }, null, 2));
   } else if (ordered.length === 0) {
-    console.log(options.stale ? "Every doc is current." : "No docs found.");
+    console.log(options.stale ? allClear(summary) : "No docs found.");
   } else {
     console.log(renderTable(toRows(ordered, Date.now())));
-    const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
     console.log(
       `\n${plural(summary.total, "doc")} · ${summary.needsAttention} ${summary.needsAttention === 1 ? "needs" : "need"} attention · worst drift ${plural(summary.worstDrift, "commit")}`,
     );
@@ -228,6 +231,22 @@ async function report(options, root) {
   if (options.ci && summary.needsAttention > 0) {
     process.exit(EXIT.stale);
   }
+}
+
+function plural(count, word) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+// "Nothing needs attention" and "every doc is current" are different facts, and
+// saying the second when the first is true is how the tool prints a table of
+// drift and then denies it. `behind` never fails a build, but it is not current.
+function allClear(summary) {
+  const behind = summary.counts[STATUS.behind] ?? 0;
+  if (behind === 0) {
+    return "Every doc is current.";
+  }
+  const subject = behind === 1 ? "1 doc is behind its code" : `${behind} docs are behind their code`;
+  return `Nothing needs attention. ${subject} — ordinary churn, under the stale threshold.`;
 }
 
 function nextStep(systems, summary) {
@@ -244,23 +263,27 @@ function nextStep(systems, summary) {
       "  ---",
     ].join("\n");
   }
-  const stale = systems.find((system) => system.status === "stale");
+  const stale = systems.find((system) => system.status === STATUS.stale);
   if (stale) {
     return `Start with: docs-doctor explain ${stale.doc}`;
   }
   // A partly dead mapping is the dangerous case: the doc still matches
   // something, so it reads as current while covering code nobody checks.
   const partlyDead = systems.find(
-    (system) => system.matchedFileCount > 0 && system.deadPatterns?.length > 0,
+    (system) => system.hasMatchedCode && system.deadPatterns?.length > 0,
   );
   if (partlyDead) {
     return `${partlyDead.doc} declares paths that match nothing (${partlyDead.deadPatterns.join(", ")}). Fix the mapping, or its drift is understated.`;
   }
-  const unmapped = systems.find((system) => system.status === "unmapped");
+  const unmapped = systems.find((system) => system.status === STATUS.unmapped);
   if (unmapped) {
     return `Unmapped: add 'code:' front matter to ${unmapped.doc}, or scope the run with --docs.`;
   }
-  return "Every doc is current.";
+  const orphan = systems.find((system) => system.status === STATUS.orphan);
+  if (orphan) {
+    return `Orphan: the code ${orphan.doc} declares no longer exists. Point its 'code:' paths at what replaced it.`;
+  }
+  return allClear(summary);
 }
 
 async function explainOne(options, root) {
@@ -280,7 +303,14 @@ async function explainOne(options, root) {
     fail(`no doc called ${options.target}. Run docs-doctor to list them.`);
   }
 
-  const { commits } = await explain({ root, docPath: match.doc, thresholds: options.thresholds });
+  // The scan already inspected this doc; handing that back spares explain a
+  // second set of git calls for the same answers.
+  const { commits } = await explain({
+    root,
+    docPath: match.doc,
+    thresholds: options.thresholds,
+    system: match,
+  });
   if (options.json) {
     console.log(JSON.stringify({ system: match, commits }, null, 2));
     return;

@@ -99,8 +99,8 @@ docs-doctor new <name>           # scaffold README, TODO and FEEDBACK
 
 | Option | Meaning |
 |---|---|
-| `--docs <glob>` | Where the docs are; repeatable git pathspecs. Default: `docs/**/*.md`, `doc/**/*.md` and root-level `*.md` |
-| `--all` | Include companion docs (`TODO.md`, `FEEDBACK.md`) as systems of their own |
+| `--docs <glob>` | Where the docs are; repeatable git pathspecs, matched as globs: `**` spans directories, a single `*` does not cross a `/`, so `"*.md"` means root-level only. Default: `docs/**/*.md`, `doc/**/*.md` and root-level `*.md` |
+| `--all` | Include companion docs (`TODO.md`, `FEEDBACK.md`, `CHANGELOG.md`) as systems of their own |
 | `--stale-commits <n>` | Commits of drift that mean stale (default 10) |
 | `--stale-days <n>` | Days of drift that mean stale (default 30) |
 | `--dir <path>` | Run against another repository |
@@ -168,7 +168,7 @@ Everything except the `git` calls is a pure function, which is why the unit test
 ```bash
 npm test            # unit tests, then the end-to-end suite
 npm run test:unit   # 22 tests on pure logic, milliseconds
-npm run test:cli    # 27 tests against throwaway git repos with fixed commit dates
+npm run test:cli    # 49 checks against throwaway git repos with fixed commit dates
 ```
 
 The end-to-end tests build real repositories where the history is known in advance — a doc left behind by twelve commits, a doc kept in step, a doc whose code was deleted — and assert what the tool reports.

@@ -62,10 +62,10 @@ prints.
 | `lib/frontmatter.mjs` | 93 | Read `title`, `code`, `ignore` out of a doc's front matter; name a system; guess a mapping when none is declared | nothing |
 | `lib/drift.mjs` | 119 | Turn two timestamps and a commit count into a status; summarise; render the table | nothing |
 | `lib/git.mjs` | 121 | Every subprocess: `rev-parse`, `log`, `rev-list`, `ls-files`. Plus bounded-concurrency `mapConcurrently` | `node:child_process` |
-| `lib/scan.mjs` | 131 | The join: find docs, build each pathspec, ask git, classify. `scan`, `inspect`, `withExclusions`, `explain` | all three above |
-| `bin/docs-doctor.mjs` | 355 | Argument parsing, command dispatch, the `new` templates, output, exit codes | `drift`, `git`, `scan` |
+| `lib/scan.mjs` | 161 | The join: find docs, build each pathspec, ask git, classify. `scan`, `inspect`, `withExclusions`, `explain` | all three above |
+| `bin/docs-doctor.mjs` | 385 | Argument parsing, command dispatch, the `new` templates, output, exit codes | `drift`, `git`, `scan` |
 | `test/unit.test.mjs` | 232 | 22 tests on the pure modules, no git, no filesystem | — |
-| `test/cli.test.sh` | 264 | End-to-end against throwaway repositories with fixed commit dates | — |
+| `test/cli.test.sh` | 311 | 49 end-to-end checks against throwaway repositories with fixed commit dates | — |
 
 `bin/docs-doctor.mjs` has a shebang and is the `bin` entry in `package.json`, so
 a clone runs without a build step. Node 22+, ESM, zero dependencies.
@@ -81,7 +81,7 @@ One object per doc, built by `scan.inspect` and passed unchanged into `--json`:
   codePaths,            // the declared (or guessed) patterns, before exclusions
   ignorePaths,          // ignore: from the front matter
   inferredMapping,      // true when the mapping was guessed, not declared
-  matchedFileCount,     // 1 if the code pathspec has any commit at all, else 0
+  hasMatchedCode,       // true when the code pathspec has any commit at all
   deadPatterns,         // declared patterns matching no tracked file
   docCommittedAtMs,     // committer date of the doc's last commit, or null
   codeCommittedAtMs,    // committer date of the code's last commit, or null
@@ -98,10 +98,9 @@ consequence is that rebasing a doc's commit moves its baseline forward and reset
 its drift, which is the honest reading: on that history, that is when the doc
 last landed.
 
-`matchedFileCount` is misnamed — it is a 0/1 flag, not a count. It exists only so
-`bin`'s `nextStep` can spot the dangerous case: a mapping that still matches
-*something* while also listing dead patterns, so the doc reads as current while
-covering code nobody is checking.
+`hasMatchedCode` exists only so `bin`'s `nextStep` can spot the dangerous case: a
+mapping that still matches *something* while also listing dead patterns, so the
+doc reads as current while covering code nobody is checking.
 
 ## Three ideas that drive most of the code
 
@@ -152,6 +151,12 @@ The default doc patterns carry explicit glob magic:
 `:(glob)` makes `**` mean "zero or more directories" and stops a single `*` from
 crossing a slash — which is what makes the third pattern root-level only, while
 `docs/**/*.md` matches both `docs/api.md` and `docs/system/api/README.md`.
+
+`asGlobPathspec` gives a `--docs` pattern the same magic, so one rule covers both
+the defaults and anything a caller passes: `--docs "*.md"` is root-level only,
+exactly as the default is. A pattern that already carries its own magic
+(`:(exclude)…`) is passed through untouched, which is how a caller still reaches
+the raw pathspec language when they want it.
 
 Code paths go to git as patterns too, never as an expanded file list. A mapping
 like `src/**` in a monorepo would otherwise produce an argument list long enough
@@ -276,17 +281,18 @@ main()
       │              ├─ matchesAnything per pattern  git ls-files -z -- src/scraper/**
       │              └─ classify(system)             → "stale" (12 >= 10)
       ├─ find the system by name or by doc path
-      ├─ explain({root, docPath, limit:20})
-      │    └─ inspect(…) again, then commitsSince()  git log --format=… --since=… -20 -- <pathspec>
+      ├─ explain({root, docPath, limit:20, system})
+      │    └─ mappingFor(…), then commitsSince()     git log --format=… --since=… -20 -- <pathspec>
       └─ print status, code paths, dead-pattern warning, then the commit list
 ```
 
-`explain` re-runs `inspect` and re-parses the front matter even though `scan`
-just did both. That is three reads of the same doc and a duplicate set of git
-calls for one command. It keeps `explain` usable on its own — `scan.explain` is
-a complete entry point that takes only a root and a doc path — at the cost of
-roughly doubling the work of the `explain` command. On one doc it is not worth
-optimising.
+`explain` takes the system `scan` already built, so the `explain` command asks
+git once for each answer rather than twice. The `system` argument is optional:
+left out, `explain` inspects the doc itself and stays a complete entry point that
+needs only a root and a doc path. What it still repeats either way is
+`mappingFor` — one file read and a front-matter parse, to rebuild the pathspec,
+which is not in the published system object and does not belong there. That is
+pure, cheap and forks no process, so it is left alone.
 
 ## Output and exit codes
 
@@ -300,7 +306,11 @@ actionable:
 2. a `stale` doc exists → `docs-doctor explain <doc>`
 3. a partly dead mapping → name the dead patterns
 4. an `unmapped` doc → add front matter, or narrow the run with `--docs`
-5. otherwise → "Every doc is current."
+5. an `orphan` doc → point its `code:` paths at what replaced them
+6. otherwise → `allClear`, which separates two facts the tool used to conflate:
+   with no `behind` docs, "Every doc is current"; with some, "Nothing needs
+   attention" plus how many are behind. Printing a drift table and then claiming
+   everything is current is the one output that reads as a bug in the tool.
 
 `--ci` is not a separate mode. It runs the normal report — the table still
 prints, so the build log shows what failed — and only then, if
@@ -371,6 +381,7 @@ behaviour working as intended.
 | Thresholds or a new status | `lib/drift.mjs` — `STATUS`, `DEFAULT_THRESHOLDS`, `classify`, `needsAttention` |
 | Table columns | `lib/drift.mjs` — `toRows` and the `columns` list in `renderTable` |
 | Which docs are scanned by default | `lib/scan.mjs` — `DEFAULT_DOC_PATTERNS` |
+| How a `--docs` pattern is matched | `lib/scan.mjs` — `asGlobPathspec` |
 | Which docs are exempt | `lib/scan.mjs` — `COMPANION_FILES`, `isCompanion` |
 | What git is actually asked | `lib/scan.mjs` — `withExclusions`; `lib/git.mjs` for the commands |
 | Concurrency | `lib/git.mjs` — the `limit` default in `mapConcurrently` |
